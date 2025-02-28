@@ -1,0 +1,216 @@
+definitions:
+  model.Version:
+    properties:
+      id:
+        description: ID 是版本的唯一标识符，用作主键。
+        type: string
+      platform:
+        description: Platform 表示版本适用的平台，不能为空。
+        type: string
+      versionNo:
+        description: VersionNo 表示版本号，不能为空。
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /delete_fatal_peer:
+    post:
+      consumes:
+      - application/json
+      description: 删除故障节点
+      parameters:
+      - description: 故障节点ID
+        in: query
+        name: PeerID
+        required: true
+        type: string
+      - description: 故障节点地址
+        in: query
+        name: PeerAddress
+        required: true
+        type: string
+      - description: 故障节点端口地址
+        in: query
+        name: PeerPortAddress
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功删除节点
+        "500":
+          description: 服务器内部错误
+      summary: 删除故障节点
+      tags:
+      - Raft管理
+  /get_leader_port_address:
+    get:
+      consumes:
+      - application/json
+      description: 获取领导者端口的地址
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取领导者端口地址
+        "500":
+          description: 服务器内部错误
+      summary: 获取领导者端口地址
+      tags:
+      - Raft管理
+  /join_raft_cluster:
+    post:
+      consumes:
+      - application/json
+      description: 将自身加入到Raft集群中
+      parameters:
+      - description: 节点ID
+        in: query
+        name: nodeID
+        required: true
+        type: string
+      - description: 节点地址
+        in: query
+        name: nodeAddress
+        required: true
+        type: string
+      - description: 端口地址
+        in: query
+        name: portAddress
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 添加节点成功
+        "500":
+          description: 服务器内部错误
+      summary: 加入Raft集群
+      tags:
+      - Raft管理
+  /leader_handle_command:
+    post:
+      consumes:
+      - application/json
+      description: 处理领导者节点发送的命令
+      parameters:
+      - description: 命令数据
+        in: query
+        name: cmd
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 领导者节点已处理命令
+        "500":
+          description: 服务器内部错误
+      summary: 处理领导者命令
+      tags:
+      - Raft管理
+  /versions:
+    post:
+      consumes:
+      - application/json
+      description: 添加一个新的版本号信息
+      parameters:
+      - description: 版本号信息
+        in: body
+        name: version
+        required: true
+        schema:
+          $ref: '#/definitions/model.Version'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功添加版本号
+        "400":
+          description: 无效的请求体
+        "500":
+          description: 服务器内部错误
+      summary: 添加版本号信息
+      tags:
+      - 版本管理
+  /versions/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 根据ID删除版本号信息
+      parameters:
+      - description: 版本号ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 版本号删除成功
+        "400":
+          description: 无效的版本号ID
+        "500":
+          description: 服务器内部错误
+      summary: 删除版本号信息
+      tags:
+      - 版本管理
+    get:
+      consumes:
+      - application/json
+      description: 根据ID获取版本号信息
+      parameters:
+      - description: 版本号ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取版本号
+          schema:
+            $ref: '#/definitions/model.Version'
+        "404":
+          description: 版本号未找到
+        "500":
+          description: 服务器内部错误
+      summary: 获取指定ID的版本号信息
+      tags:
+      - 版本管理
+    put:
+      consumes:
+      - application/json
+      description: 根据ID更新版本号信息
+      parameters:
+      - description: 版本号ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 版本号信息
+        in: body
+        name: version
+        required: true
+        schema:
+          $ref: '#/definitions/model.Version'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 版本号更新成功
+        "400":
+          description: 无效的请求体或版本号ID
+        "404":
+          description: 版本号未找到
+        "500":
+          description: 服务器内部错误
+      summary: 更新版本号信息
+      tags:
+      - 版本管理
+swagger: "2.0"
