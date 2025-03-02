@@ -33,7 +33,7 @@ func NewVersionController(versionService *service.VersionService) *VersionContro
 // @Success 200   "成功添加版本号"
 // @Failure 400   "无效的请求体"
 // @Failure 500   "服务器内部错误"
-// @Router /versions [post]
+// @Router /add_versions [post]
 func (vc *VersionController) AddVersion(c *gin.Context) {
 	var version model.Version
 	if err := c.BindJSON(&version); err != nil {
@@ -61,7 +61,7 @@ func (vc *VersionController) AddVersion(c *gin.Context) {
 // @Success 200   "版本号删除成功"
 // @Failure 400   "无效的版本号ID"
 // @Failure 500   "服务器内部错误"
-// @Router /versions/{id} [delete]
+// @Router /delete_versions/{id} [delete]
 func (vc *VersionController) DeleteVersion(c *gin.Context) {
 	id := c.Param("id")
 	err := vc.versionService.DeleteVersion(id)
@@ -86,7 +86,7 @@ func (vc *VersionController) DeleteVersion(c *gin.Context) {
 // @Failure 400   "无效的请求体或版本号ID"
 // @Failure 404   "版本号未找到"
 // @Failure 500   "服务器内部错误"
-// @Router /versions/{id} [put]
+// @Router /update_versions/{id} [put]
 func (vc *VersionController) UpdateVersion(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
@@ -130,7 +130,7 @@ func (vc *VersionController) UpdateVersion(c *gin.Context) {
 // @Success 200 {object} model.Version "成功获取版本号"
 // @Failure 404   "版本号未找到"
 // @Failure 500   "服务器内部错误"
-// @Router /versions/{id} [get]
+// @Router /get_versions/{id} [get]
 func (vc *VersionController) GetVersionByID(c *gin.Context) {
 	id := c.Param("id")
 	version, err := vc.versionService.GetVersionByID(id)
