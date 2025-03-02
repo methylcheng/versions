@@ -52,6 +52,10 @@ func (f *VersionFSM) Apply(log *raft.Log) interface{} {
 			return fmt.Errorf("重新加载 Redis 数据失败: %s", err)
 		}
 		return nil
+	case "periodicDelete":
+		if err := f.service.PeriodicDeleteInterval(cmd.ExamineSize); err != nil {
+			return fmt.Errorf("定期删除版本失败: %s", err)
+		}
 	case "updatePeers":
 		f.service.UpdatePeersInternal(cmd.Peer)
 		return nil
@@ -61,6 +65,7 @@ func (f *VersionFSM) Apply(log *raft.Log) interface{} {
 	default:
 		return fmt.Errorf("未知操作: %s", cmd.Operation)
 	}
+	return nil
 }
 
 // Snapshot 创建快照
