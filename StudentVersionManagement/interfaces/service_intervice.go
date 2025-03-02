@@ -12,6 +12,7 @@ type VersionServiceInterface interface {
 	UpdateVersionInternal(student *model.Version) error
 	DeleteVersionInternal(id string) error
 	ReLoadCacheDataInternal() error
+	PeriodicDeleteInterval(examineSize int) error
 	GetLeaderPortAddr() (string, error, *config.Peer)
 	UpdatePeersInternal(peer *config.Peer)
 	DeleteWrongPeerInternal(peer *config.Peer)
