@@ -16,6 +16,12 @@ type RedisConfig struct {
 	DB       int    // Redis 数据库编号
 }
 
+// DBConfig 定义内存数据库配置结构体
+type DBConfig struct {
+	MaxCapacity   int     //内存容量
+	EvictionRatio float64 //触发内存淘汰时淘汰的键的比例
+}
+
 // ServerConfig 定义服务器的运行配置
 type ServerConfig struct {
 	ReloadInterval         time.Duration // 缓存重载的时间间隔
@@ -39,8 +45,9 @@ type Peer struct {
 
 // Config 定义整个应用的配置信息
 type Config struct {
-	MySQL  MySQLConfig  // MySQL 配置
-	Redis  RedisConfig  // Redis 配置
+	MySQL  MySQLConfig // MySQL 配置
+	Redis  RedisConfig // Redis 配置
+	DB     DBConfig
 	Server ServerConfig // 服务器配置
 	Node   Node         // 当前节点配置
 	Peers  []*Peer      // 集群中其他节点配置
@@ -59,9 +66,13 @@ func GetConfig() Config {
 			Password: "wsm665881",
 			DB:       0,
 		},
+		DB: DBConfig{
+			MaxCapacity:   10,
+			EvictionRatio: 0.2,
+		},
 		// 配置服务器运行参数
 		Server: ServerConfig{
-			ReloadInterval:         time.Hour,
+			ReloadInterval:         time.Minute,
 			PeriodicDeleteInterval: time.Hour,
 			ExamineSize:            10,
 		},
