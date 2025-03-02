@@ -27,6 +27,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("节点：%s 初始化 MySQL DAO 失败: %v", cfg.Node.ID, err)
 	}
+	inmemoryDBDao, err := dao.NewInMemoryDBDao(cfg.DB.MaxCapacity, cfg.DB.EvictionRatio)
+	if err != nil {
+		log.Fatalf("节点：%s 初始化内存数据库 DAO 失败: %v", cfg.Node.ID, err)
+	}
 
 	// 初始化服务
 	versionCacheService := service.NewVersionRedisService(versionCacheDao)
@@ -34,7 +38,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("节点：%s 初始化 MySQL 服务层失败: %v", cfg.Node.ID, err)
 	}
-	versionService, err := service.NewVersionService(versionMysqlService, versionCacheService, cfg.Node, cfg.Peers)
+	versionDBService := service.NewVersionDBService(inmemoryDBDao)
+	versionService, err := service.NewVersionService(versionMysqlService, versionCacheService, versionDBService, cfg.Node, cfg.Peers)
 	if err != nil {
 		log.Fatalf("节点：%s 初始化学生服务层失败：%v", cfg.Node.ID, err)
 	}
