@@ -21,6 +21,7 @@ import (
 type VersionService struct {
 	MysqlService *VersionMysqlService
 	RedisService *VersionRedisService
+	DBService    *VersionDBService
 	RaftNodes    *raftfpk.Raft
 	node         config.Node
 	peers        []*config.Peer
@@ -41,10 +42,11 @@ func ConvertPeersToNodes(peers []*config.Peer) ([]*config.Node, error) {
 }
 
 // NewVersionService 创建一个新的 VersionService 实例
-func NewVersionService(mysqlService *VersionMysqlService, redisService *VersionRedisService, node config.Node, peers []*config.Peer) (*VersionService, error) {
+func NewVersionService(mysqlService *VersionMysqlService, redisService *VersionRedisService, dbService *VersionDBService, node config.Node, peers []*config.Peer) (*VersionService, error) {
 	vs := &VersionService{
 		MysqlService: mysqlService,
 		RedisService: redisService,
+		DBService:    dbService,
 		RaftNodes:    new(raftfpk.Raft),
 		node:         node,
 		peers:        peers,
@@ -469,14 +471,22 @@ func (vs *VersionService) AddVersionInternal(version *model.Version) error {
 		tx.Rollback()
 		return fmt.Errorf("无法向redis中添加版本信息: %w", err)
 	}
-	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("提交MySQL事务失败: %w", err)
+	// 最后添加到内存数据库
+	if err := vs.DBService.AddVersion(version); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("无法向内存数据库中添加版本信息: %w", err)
 	}
 	return nil
 }
 
 // GetVersionByID 获取指定 ID 的版本信息
 func (vs *VersionService) GetVersionByID(id string) (*model.Version, error) {
+	// 先从内存中查找学生
+	if version, err := vs.DBService.GetVersionByID(id); err == nil {
+		log.Printf("从内存中查找版本号：%s", id)
+		log.Printf("%v", version)
+		return version, nil
+	}
 	// 尝试从缓存获取版本
 	version, err := vs.RedisService.GetVersionByID(id)
 	if err == nil {
@@ -533,6 +543,15 @@ func (vs *VersionService) UpdateVersionInternal(version *model.Version) error {
 		return fmt.Errorf("Redis 中版本号：%s 不存在：%w", version.ID, err)
 	}
 
+	//最后检查内存中版本是否存在
+	if err := vs.DBService.VersionExists(version.ID); err != nil {
+		// 回滚事务
+		tx.Rollback()
+		// 记录错误日志
+		log.Printf("内存中版本号：%s 不存在：%v", version.ID, err)
+		return fmt.Errorf("内存中版本号：%s 不存在：%w", version.ID, err)
+	}
+
 	// 调用数据层代码更新 MySQL 中的版本信息
 	if err := vs.MysqlService.UpdateVersion(tx, version); err != nil {
 		// 回滚事务
@@ -542,13 +561,24 @@ func (vs *VersionService) UpdateVersionInternal(version *model.Version) error {
 		return fmt.Errorf("更新版本号失败：%w", err)
 	}
 
-	// MySQL 数据库事务提交成功后，尝试更新缓存，还要确保数据一致性
+	// MySQL 数据库事务提交成功后，尝试更新缓存和内存 还要确保数据一致性
 	if err := vs.RedisService.UpdateVersion(version); err != nil {
-		// 回滚事务
-		tx.Rollback()
-		// 记录错误日志
-		log.Printf("更新版本到redis失败: %v", err)
-		return fmt.Errorf("更新版本到redis失败: %w", err)
+		if !vs.VersionNotFoundErr(err) {
+			tx.Rollback()
+			log.Printf("更新缓存失败：%v", err)
+			return fmt.Errorf("更新缓存失败：%w", err)
+		}
+	}
+	if err := vs.DBService.UpdateVersion(version); err != nil {
+		if !vs.VersionNotFoundErr(err) && !strings.Contains(err.Error(), "过期") {
+			tx.Rollback()
+			if err = vs.RestoreCacheData(version.ID); err != nil {
+				log.Printf("更新内存失败：%v", err)
+				return fmt.Errorf("更新内存失败：%w", err)
+			}
+			log.Printf("更新内存失败：%v", err)
+			return fmt.Errorf("更新内存失败：%w", err)
+		}
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -556,7 +586,6 @@ func (vs *VersionService) UpdateVersionInternal(version *model.Version) error {
 		log.Printf("提交MySQL事务失败: %v", err)
 		return fmt.Errorf("提交MySQL事务失败: %w", err)
 	}
-
 	return nil
 }
 
@@ -602,6 +631,12 @@ func (vs *VersionService) DeleteVersionInternal(id string) error {
 			return fmt.Errorf("从redis删除版本失败: %w", err)
 		}
 	}
+	if err := vs.DBService.DeleteVersion(id); err != nil {
+		if !vs.VersionNotFoundErr(err) {
+			tx.Rollback()
+			return fmt.Errorf("从内存中删除版本失败: %w", err)
+		}
+	}
 	if err := tx.Commit().Error; err != nil {
 		return fmt.Errorf("提交MySQL事务失败: %w", err)
 	}
@@ -641,4 +676,52 @@ func (vs *VersionService) UpdateVersion(version *model.Version) error {
 func (vs *VersionService) DeleteVersion(id string) error {
 	// 提交给Raft节点
 	return vs.applyRaftCommand("delete", nil, id, 0, nil)
+}
+
+// PeriodicDeleteInterval 实现接口中的方法，用于周期性地执行删除操作
+func (vs *VersionService) PeriodicDeleteInterval(examineSize int) error {
+	// 这里可以添加具体的逻辑，例如定期检查并删除过期或无效的数据
+	log.Printf("开始周期性删除操作，检查大小: %d", examineSize)
+	// 示例：调用删除版本的方法
+	if err := vs.DeleteVersionInternal(""); err != nil {
+		return fmt.Errorf("周期性删除操作失败: %w", err)
+	}
+	return nil
+}
+
+// LoadCacheToMemory 加载缓存到内存
+func (vs *VersionService) LoadCacheToMemory() error {
+	// 从数据库加载数据到内存
+	versions, err := vs.MysqlService.GetAllVersions()
+	if err != nil {
+		return fmt.Errorf("从数据库加载数据到内存失败: %w", err)
+	}
+	// 将数据加载到内存
+	for _, version := range versions {
+		if err := vs.RedisService.AddVersion(version); err != nil {
+			return fmt.Errorf("将数据加载到内存失败:%w", err)
+		}
+	}
+	return nil
+}
+
+// LoadDateBaseToMemory 加载数据库的版本号到内存
+func (vs *VersionService) LoadDateBaseToMemory(maxCapacity int, addRadio float64) error {
+	// 从数据库中获取热门学生
+	versions, err := vs.MysqlService.GetAllVersions()
+	if err != nil {
+		return fmt.Errorf("LoadDateBaseToMemory 从数据库中获取学生失败：%w", err)
+	}
+	// 定义一个已加载学生数量的计数器 如果超过了容量*加载学生占内存总容量的比例 就停止添加
+	addCount := 0
+	for _, version := range versions {
+		// 将学生添加到内存数据库
+		vs.DBService.AddVersion(version)
+		addCount++
+		if addCount >= int(float64(maxCapacity)*addRadio) {
+			log.Printf("从数据库加载到内存 已达到内存容量%d的%f 停止添加 共添加%d个键值对", maxCapacity, addRadio, addCount)
+			return nil
+		}
+	}
+	return nil
 }
